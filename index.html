@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver App - PickMe Clone</title>
+    
+    <!-- Leaflet CSS (සිතියම පෙනෙන්නට මෙය අනිවාර්යයි) -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        /* සිතියම පෙනෙන්නට උසක් (Height) අනිවාර්යයෙන් තිබිය යුතුයි */
+        #map { height: 100vh; width: 100%; background: #e0e0e0; }
+        
+        #hire-box { 
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%); 
+            width: 85%; max-width: 400px; background: white; padding: 20px; 
+            border-radius: 15px; display: none; z-index: 2000; 
+            box-shadow: 0 5px 25px rgba(0,0,0,0.3); text-align: center; 
+        }
+        button { 
+            background: #28a745; color: white; padding: 12px 25px; 
+            border: none; border-radius: 8px; cursor: pointer; font-weight: bold; 
+        }
+        #status-indicator {
+            position: fixed; bottom: 10px; left: 10px; z-index: 2000;
+            background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hire-box">
+        <h3>🚕 අලුත් හයර් එකක්!</h3>
+        <p id="dist-txt">දුර ගණනය කරමින්...</p>
+        <button onclick="acceptHire()">බාරගන්න (Accept)</button>
+    </div>
+
+    <div id="status-indicator">පද්ධතිය ක්‍රියාත්මකයි...</div>
+    <div id="map"></div>
+
+    <!-- අත්‍යවශ්‍ය ලයිබ්‍රරි (මේ ලින්ක් නිවැරදි කර ඇත) -->
+    <script src="https://unpkg.com"></script>
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+
+    <script>
+        // 1. ඔබේ Firebase Config එක
+        const firebaseConfig = { 
+            apiKey: "AIzaSyBc9H83sV-EX-cQ2-7RbBKWOYJcoFG9874", 
+            authDomain: "://firebaseapp.com",
+            databaseURL: "https://firebaseio.com", 
+            projectId: "mytaxiapp-b552e" 
+        };
+
+        // Firebase ආරම්භ කිරීම
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
+
+        // 2. සිතියම සාදා ගැනීම (කොළඹ කේන්ද්‍ර කරගෙන)
+        var map = L.map('map').setView([6.9271, 79.8612], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        var driverMarker = L.marker([6.9271, 79.8612]).addTo(map).bindPopup("මම (රියදුරු)");
+        var curLat = 6.9271, curLng = 79.8612;
+
+        // 3. රියදුරාගේ ලොකේෂන් එක ලබා ගැනීම
+        navigator.geolocation.watchPosition(pos => {
+            curLat = pos.coords.latitude; 
+            curLng = pos.coords.longitude;
+            driverMarker.setLatLng([curLat, curLng]);
+            document.getElementById('status-indicator').innerText = "ලොකේෂන් එක ලැබුණා: " + curLat.toFixed(4);
+        }, err => {
+            alert("කරුණාකර Browser එකේ Location Permission (Allow) ලබා දෙන්න.");
+        });
+
+        // දුර මැනීමේ සමීකරණය
+        function getDistance(lat1, lon1, lat2, lon2) {
+            var R = 6371; 
+            var dLat = (lat2-lat1)*Math.PI/180; 
+            var dLon = (lon2-lon1)*Math.PI/180;
+            var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        // 4. Firebase එකේ දත්ත පරීක්ෂා කිරීම
+        database.ref('trips/trip1').on('value', snap => {
+            let val = snap.val();
+            if(val && val.status === "searching") {
+                let dist = getDistance(curLat, curLng, val.pickup_lat, val.pickup_lng);
+                // කිලෝමීටර් 1ක් ඇතුළත නම් පමණක් පෙන්වන්න
+                if(dist <= 1.0) { 
+                    document.getElementById('dist-txt').innerText = "මගියා සිටින දුර: " + dist.toFixed(2) + " km";
+                    document.getElementById('hire-box').style.display = 'block';
+                }
+            } else {
+                document.getElementById('hire-box').style.display = 'none';
+            }
+        });
+
+        function acceptHire() {
+            database.ref('trips/trip1').update({ 
+                status: "accepted", 
+                driver_lat: curLat, 
+                driver_lng: curLng 
+            });
+            document.getElementById('hire-box').style.display = 'none';
+            alert("හයර් එක බාරගත්තා!");
+        }
+    </script>
+</body>
+</html>
