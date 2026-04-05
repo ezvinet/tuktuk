@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Driver (FREE)</title>
+<title>Passenger App (FREE)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,31 +11,21 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
 <style>
-#map { height:100vh; }
-#box {
- position:fixed;
- top:20px;
- left:50%;
- transform:translateX(-50%);
- background:white;
- padding:20px;
- display:none;
-}
+body { margin:0; font-family:sans-serif; }
+#map { height:90vh; }
+button { width:100%; padding:15px; font-size:18px; }
 </style>
 </head>
 
 <body>
-
-<div id="box">
-<p id="info"></p>
-<button onclick="accept()">Accept</button>
-</div>
-
+<h3>Passenger App (FREE)</h3>
 <div id="map"></div>
+<button onclick="confirmRide()">Confirm Ride</button>
 
 <script>
+// Firebase config
 const firebaseConfig = {
- apiKey: "AIzaSyBc9H83sV-EX-cQ2-7RbBKWOYJcoFG9874",
+  apiKey: "AIzaSyBc9H83sV-EX-cQ2-7RbBKWOYJcoFG9874",
             databaseURL: "https://mytaxiapp-b552e-default-rtdb.firebaseio.com",
             projectId: "mytaxiapp-b552e"
 };
@@ -43,77 +33,61 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// Leaflet map
 let map = L.map('map').setView([6.9271,79.8612],13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-let curLat, curLng;
-let currentTrip=null;
+let pickup=null, drop=null, tripId=null;
+let driverMarker = L.marker([0,0]).addTo(map);
 
-let marker = L.marker([6.9271,79.8612]).addTo(map);
-
-// 📡 LIVE GPS
-navigator.geolocation.watchPosition(pos=>{
-
-    curLat = pos.coords.latitude;
-    curLng = pos.coords.longitude;
-
-    marker.setLatLng([curLat, curLng]);
-
-    if(currentTrip){
-        db.ref('trips/' + currentTrip).update({
-            driver_lat: curLat,
-            driver_lng: curLng
-        });
-    }
-
+// Auto pickup
+navigator.geolocation.getCurrentPosition(pos=>{
+    pickup = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    L.marker([pickup.lat, pickup.lng]).addTo(map).bindPopup("Pickup").openPopup();
+    map.setView([pickup.lat, pickup.lng],15);
 });
 
-// distance calc
-function distance(a,b,c,d){
-    let R=6371;
-    let dLat=(c-a)*Math.PI/180;
-    let dLon=(d-b)*Math.PI/180;
-    let x=Math.sin(dLat/2)**2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)**2;
-    return R*(2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)));
-}
-
-// listen trips
-db.ref('trips').on('value', snap=>{
-
-    let data = snap.val();
-
-    for(let id in data){
-
-        let t = data[id];
-
-        if(t.status==="searching" && curLat){
-
-            let d = distance(curLat, curLng, t.pickup_lat, t.pickup_lng);
-
-            if(d < 1){
-
-                currentTrip = id;
-
-                document.getElementById('info').innerText =
-                "Distance: " + d.toFixed(2) + " km";
-
-                document.getElementById('box').style.display = 'block';
-            }
-        }
+// Select drop on map
+map.on('click', e=>{
+    if(!drop){
+        drop = e.latlng;
+        L.marker(drop).addTo(map).bindPopup("Drop").openPopup();
     }
 });
 
-function accept(){
+function confirmRide(){
+    if(!pickup || !drop){
+        alert("Select drop location");
+        return;
+    }
 
-    db.ref('trips/' + currentTrip).update({
-        status:"accepted",
-        driver_lat: curLat,
-        driver_lng: curLng
+    tripId = "trip_" + Date.now();
+
+    db.ref('trips/' + tripId).set({
+        pickup_lat: pickup.lat,
+        pickup_lng: pickup.lng,
+        drop_lat: drop.lat,
+        drop_lng: drop.lng,
+        status: "searching"
     });
 
-    document.getElementById('box').style.display='none';
+    listenDriver();
+}
+
+function listenDriver(){
+    db.ref('trips/' + tripId).on('value', snap=>{
+        let d = snap.val();
+        if(!d) return;
+
+        if(d.status === "accepted"){
+            alert("Driver accepted!");
+        }
+
+        if(d.driver_lat){
+            driverMarker.setLatLng([d.driver_lat, d.driver_lng]);
+        }
+    });
 }
 </script>
-
 </body>
 </html>
